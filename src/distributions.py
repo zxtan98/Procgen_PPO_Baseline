@@ -1,7 +1,6 @@
-import math
 import torch
 import torch.nn as nn
-from ppo_daac_idaac.utils import init
+from .utils import init
 
 class FixedCategorical(torch.distributions.Categorical):
     """

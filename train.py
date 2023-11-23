@@ -3,7 +3,6 @@ import torch
 import numpy as np
 from collections import deque
 
-import hyperparams as hps
 from test import evaluate
 from procgen import ProcgenEnv
 
@@ -14,27 +13,15 @@ from baselines.common.vec_env import (
     VecNormalize
 )
 
-from ppo_daac_idaac import algo, utils
-from ppo_daac_idaac.arguments import parser
-from ppo_daac_idaac.model import PPOnet, IDAACnet, \
-    LinearOrderClassifier, NonlinearOrderClassifier
-from ppo_daac_idaac.storage import DAACRolloutStorage, \
-    IDAACRolloutStorage, RolloutStorage
-from ppo_daac_idaac.envs import VecPyTorchProcgen
+from src import algo, utils
+from src.arguments import parser
+from src.model import PPOnet
+from src.storage import RolloutStorage
+from src.envs import VecPyTorchProcgen
 
 
 def train(args):
     args.cuda = not args.no_cuda and torch.cuda.is_available()
-    if args.use_best_hps:
-        args.value_epoch = hps.value_epoch[args.env_name]
-        args.value_freq = hps.value_freq[args.env_name]
-        args.adv_loss_coef = hps.adv_loss_coef[args.env_name]
-        args.clf_hidden_size = hps.clf_hidden_size[args.env_name]
-        args.order_loss_coef = hps.order_loss_coef[args.env_name]
-        if args.env_name in hps.nonlin_envs:
-            args.use_nonlinear_clf = True
-        else:
-            args.use_nonlinear_clf = False
     print("\nArguments: ", args)
 
     torch.manual_seed(args.seed)
@@ -59,81 +46,30 @@ def train(args):
     envs = VecPyTorchProcgen(venv, device)
 
     obs_shape = envs.observation_space.shape     
-    if args.algo == 'ppo':
-        actor_critic = PPOnet(
-            obs_shape,
-            envs.action_space.n,
-            base_kwargs={'hidden_size': args.hidden_size})    
-    else:           
-        actor_critic = IDAACnet(
-            obs_shape,
-            envs.action_space.n,
-            base_kwargs={'hidden_size': args.hidden_size})    
+    actor_critic = PPOnet(
+        obs_shape,
+        envs.action_space.n,
+        base_kwargs={'hidden_size': args.hidden_size}
+    )
     actor_critic.to(device)
     print("\n Actor-Critic Network: ", actor_critic)
     
-    if args.algo == 'idaac':
-        if args.use_nonlinear_clf:
-            order_classifier = NonlinearOrderClassifier(emb_size=args.hidden_size, \
-                hidden_size=args.clf_hidden_size).to(device)       
-        else:
-            order_classifier = LinearOrderClassifier(emb_size=args.hidden_size)
-        order_classifier.to(device)
-        print("\n Order Classifier: ", order_classifier)
 
-    if args.algo == 'idaac':
-        rollouts = IDAACRolloutStorage(args.num_steps, args.num_processes,
-                                envs.observation_space.shape, envs.action_space)
-    elif args.algo == 'daac':
-        rollouts = DAACRolloutStorage(args.num_steps, args.num_processes,
-                                envs.observation_space.shape, envs.action_space)
-    else:
-        rollouts = RolloutStorage(args.num_steps, args.num_processes,
-                                envs.observation_space.shape, envs.action_space)
+    rollouts = RolloutStorage(args.num_steps, args.num_processes,
+                            envs.observation_space.shape, envs.action_space)
 
     batch_size = int(args.num_processes * args.num_steps / args.num_mini_batch)
 
-    if args.algo == 'idaac':
-        agent = algo.IDAAC(
-            actor_critic,
-            order_classifier,
-            args.clip_param,
-            args.ppo_epoch,
-            args.value_epoch, 
-            args.value_freq,
-            args.num_mini_batch,
-            args.value_loss_coef,
-            args.adv_loss_coef,
-            args.order_loss_coef, 
-            args.entropy_coef,
-            lr=args.lr,
-            eps=args.eps,
-            max_grad_norm=args.max_grad_norm)
-    elif args.algo == 'daac':
-        agent = algo.DAAC(
-            actor_critic,
-            args.clip_param,
-            args.ppo_epoch,
-            args.value_epoch, 
-            args.value_freq,
-            args.num_mini_batch,
-            args.value_loss_coef,
-            args.adv_loss_coef,
-            args.entropy_coef,
-            lr=args.lr,
-            eps=args.eps,
-            max_grad_norm=args.max_grad_norm)
-    else: 
-        agent = algo.PPO(
-            actor_critic,
-            args.clip_param,
-            args.ppo_epoch,
-            args.num_mini_batch,
-            args.value_loss_coef,
-            args.entropy_coef,
-            lr=args.lr,
-            eps=args.eps,
-            max_grad_norm=args.max_grad_norm)
+    agent = algo.PPO(
+        actor_critic,
+        args.clip_param,
+        args.ppo_epoch,
+        args.num_mini_batch,
+        args.value_loss_coef,
+        args.entropy_coef,
+        lr=args.lr,
+        eps=args.eps,
+        max_grad_norm=args.max_grad_norm)
 
 
     obs = envs.reset()
@@ -151,17 +87,9 @@ def train(args):
         for step in range(args.num_steps):
             # Sample actions
             with torch.no_grad():
-                if args.algo == 'ppo':
-                    value, action, action_log_prob = actor_critic.act(rollouts.obs[step])
-                else:
-                    adv, value, action, action_log_prob = actor_critic.act(rollouts.obs[step])
+                value, action, action_log_prob = actor_critic.act(rollouts.obs[step])
                                         
             obs, reward, done, infos = envs.step(action)
-
-            if args.algo == 'idaac':
-                levels = torch.LongTensor([info['level_seed'] for info in infos])
-                if j == 0 and step == 0:
-                    rollouts.levels[0].copy_(levels)
 
             for info in infos:
                 if 'episode' in info.keys():
@@ -173,29 +101,15 @@ def train(args):
 
             nsteps += 1 
             nsteps[done == True] = 0
-            if args.algo == 'idaac':
-                rollouts.insert(obs, action, action_log_prob, value, \
-                                reward, masks, adv, levels, nsteps)
-            elif args.algo == 'daac':
-                rollouts.insert(obs, action, action_log_prob, value, \
-                                reward, masks, adv)
-            else:
-                rollouts.insert(obs, action, action_log_prob, value, \
-                                reward, masks)
+            rollouts.insert(obs, action, action_log_prob, value, \
+                            reward, masks)
 
         with torch.no_grad():
             next_value = actor_critic.get_value(rollouts.obs[-1]).detach()
         
         rollouts.compute_returns(next_value, args.gamma, args.gae_lambda)
 
-        if args.algo == 'idaac':
-            rollouts.before_update()
-            order_acc, order_loss, clf_loss, adv_loss, value_loss, \
-                action_loss, dist_entropy = agent.update(rollouts)    
-        elif args.algo == 'daac':
-            adv_loss, value_loss, action_loss, dist_entropy = agent.update(rollouts)    
-        else:
-            value_loss, action_loss, dist_entropy = agent.update(rollouts)    
+        value_loss, action_loss, dist_entropy = agent.update(rollouts)    
         rollouts.after_update()
 
         # Save Model

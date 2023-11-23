@@ -1,7 +1,4 @@
-import gym
 import torch
-import random
-import numpy as np 
 from gym.spaces.box import Box
 from baselines.common.vec_env import VecEnvWrapper
 

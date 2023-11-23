@@ -1,11 +1,9 @@
-import numpy as np
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ppo_daac_idaac.utils import init
-from ppo_daac_idaac.distributions import Categorical
+from .utils import init
+from .distributions import Categorical
 
 
 init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
@@ -266,37 +264,6 @@ class ValueResNet(NNBase):
         return self.critic_linear(x)
 
 
-class LinearOrderClassifier(nn.Module):
-    def __init__(self, emb_size=256):
-        super(LinearOrderClassifier, self).__init__()
-        self.main = nn.Sequential(
-            Flatten(),
-            init_(nn.Linear(2*emb_size, 2)), 
-            nn.Softmax(dim=1),
-        )
-        self.train()
-
-    def forward(self, emb):
-        x = self.main(emb)
-        return x
-
-
-class NonlinearOrderClassifier(nn.Module):
-    def __init__(self, emb_size=256, hidden_size=4):
-        super(NonlinearOrderClassifier, self).__init__()
-        self.main = nn.Sequential(
-            Flatten(),
-            init_relu_(nn.Linear(2*emb_size, hidden_size)), nn.ReLU(),
-            init_(nn.Linear(hidden_size, 2)), 
-            nn.Softmax(dim=1),
-        )
-        self.train()
-
-    def forward(self, emb):
-        x = self.main(emb)
-        return x
-
-
 class PPOnet(nn.Module):
     """
     PPO netowrk 
@@ -342,53 +309,3 @@ class PPOnet(nn.Module):
         
         return value, action_log_probs, dist_entropy
 
-
-class IDAACnet(nn.Module):
-    """
-    IDAAC network
-    """
-    def __init__(self, obs_shape, num_actions, base_kwargs=None):
-        super(IDAACnet, self).__init__()
-        
-        if base_kwargs is None:
-            base_kwargs = {}
-        
-        base = PolicyResNetBase
-        
-        self.base = base(obs_shape[0], **base_kwargs)
-        self.value_net = ValueResNet(obs_shape[0], **base_kwargs)
-        self.dist = Categorical(self.base.output_size, num_actions)
-        
-    def forward(self, inputs):
-        raise NotImplementedError
-
-    def act(self, inputs, deterministic=False):
-        gae, actor_features = self.base(inputs)
-        value = self.value_net(inputs)
-        dist = self.dist(actor_features)
-
-        if deterministic:
-            action = dist.mode()
-        else:
-            action = dist.sample()
-
-        action_log_probs = dist.log_probs(action)
-        dist_entropy = dist.entropy().mean()
-
-        gae, _ = self.base(inputs, action)
-
-        return gae, value, action, action_log_probs
-
-    def get_value(self, inputs):
-        value = self.value_net(inputs)
-        return value
-
-    def evaluate_actions(self, inputs, action):
-        gae, actor_features = self.base(inputs, action)
-        value = self.value_net(inputs)
-        dist = self.dist(actor_features)
-
-        action_log_probs = dist.log_probs(action)
-        dist_entropy = dist.entropy().mean()
-
-        return actor_features, gae, value, action_log_probs, dist_entropy

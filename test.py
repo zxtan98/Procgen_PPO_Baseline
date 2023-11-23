@@ -8,7 +8,7 @@ from baselines.common.vec_env import (
     VecNormalize
 )
 
-from ppo_daac_idaac.envs import VecPyTorchProcgen
+from src.envs import VecPyTorchProcgen
 
 
 def evaluate(args, actor_critic, device):

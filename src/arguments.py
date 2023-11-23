@@ -1,5 +1,4 @@
 import argparse
-import torch
 
 parser = argparse.ArgumentParser(description='RL')
 
@@ -113,46 +112,6 @@ parser.add_argument(
     type=int,
     default=256,
     help='state embedding dimension')
-
-# DAAC arguments.
-parser.add_argument(
-    '--use_best_hps',
-    action='store_true',
-    default=False,
-    help='use the best hyperparameters for each game. \
-    if False, use the same hyperparameters for all games (i.e. the default ones)')
-parser.add_argument(
-    '--value_epoch',
-    type=int,
-    default=9,
-    help='number of ppo epochs')
-parser.add_argument(
-    '--value_freq',
-    type=int,
-    default=1,
-    help='number of value epochs')
-parser.add_argument(
-    '--adv_loss_coef', 
-    type=float,
-    default=0.25, 
-    help='coefficient for the GAE loss')
-
-# IDAAC arguments.
-parser.add_argument(
-    '--use_nonlinear_clf',
-    action='store_true',
-    default=False,
-    help='use level invariance')
-parser.add_argument(
-    '--order_loss_coef', 
-    type=float,
-    default=0.001, 
-    help='coefficient for the GAE loss')
-parser.add_argument(
-    '--clf_hidden_size', 
-    type=int,
-    default=4, 
-    help='coefficient for the GAE loss')
 
 # Procgen arguments.
 parser.add_argument(
