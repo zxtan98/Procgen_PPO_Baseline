@@ -56,7 +56,7 @@ def train(args):
     
 
     rollouts = RolloutStorage(args.num_steps, args.num_processes,
-                            envs.observation_space.shape, envs.action_space)
+                            envs.observation_space.shape, envs.action_space, device)
 
     batch_size = int(args.num_processes * args.num_steps / args.num_mini_batch)
 
@@ -74,7 +74,7 @@ def train(args):
 
     obs = envs.reset()
     rollouts.obs[0].copy_(obs)
-    rollouts.to(device)
+    # rollouts.to(device)
 
     episode_rewards = deque(maxlen=10)
     num_updates = int(
@@ -87,7 +87,7 @@ def train(args):
         for step in range(args.num_steps):
             # Sample actions
             with torch.no_grad():
-                value, action, action_log_prob = actor_critic.act(rollouts.obs[step])
+                value, action, action_log_prob = actor_critic.act(rollouts.obs[step].to(device))
                                         
             obs, reward, done, infos = envs.step(action)
 
@@ -105,7 +105,7 @@ def train(args):
                             reward, masks)
 
         with torch.no_grad():
-            next_value = actor_critic.get_value(rollouts.obs[-1]).detach()
+            next_value = actor_critic.get_value(rollouts.obs[-1].to(device)).detach()
         
         rollouts.compute_returns(next_value, args.gamma, args.gae_lambda)
 

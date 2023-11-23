@@ -4,7 +4,7 @@ from torch.utils.data.sampler import \
 
 
 class RolloutStorage(object):
-    def __init__(self, num_steps, num_processes, obs_shape, action_space):
+    def __init__(self, num_steps, num_processes, obs_shape, action_space, device):
         self.obs = torch.zeros(num_steps + 1, num_processes, *obs_shape)
         self.rewards = torch.zeros(num_steps, num_processes, 1)
         self.value_preds = torch.zeros(num_steps + 1, num_processes, 1)
@@ -20,15 +20,16 @@ class RolloutStorage(object):
         self.masks = torch.ones(num_steps + 1, num_processes, 1)
         self.num_steps = num_steps
         self.step = 0
+        self.device = device
         
-    def to(self, device):
-        self.obs = self.obs.to(device)
-        self.rewards = self.rewards.to(device)
-        self.value_preds = self.value_preds.to(device)
-        self.returns = self.returns.to(device)
-        self.action_log_probs = self.action_log_probs.to(device)
-        self.actions = self.actions.to(device)
-        self.masks = self.masks.to(device)
+    # def to(self, device):
+    #     self.obs = self.obs.to(device)
+    #     self.rewards = self.rewards.to(device)
+    #     self.value_preds = self.value_preds.to(device)
+    #     self.returns = self.returns.to(device)
+    #     self.action_log_probs = self.action_log_probs.to(device)
+    #     self.actions = self.actions.to(device)
+    #     self.masks = self.masks.to(device)
 
     def insert(self, obs, actions, action_log_probs, 
                value_preds, rewards, masks):
@@ -81,6 +82,7 @@ class RolloutStorage(object):
             mini_batch_size,
             drop_last=True)
      
+        device = self.device
         for indices in sampler:
             obs_batch = self.obs[:-1].view(-1, *self.obs.size()[2:])[indices]
             actions_batch = self.actions.view(-1,
@@ -94,5 +96,5 @@ class RolloutStorage(object):
             else:
                 adv_targ = advantages.view(-1, 1)[indices]
 
-            yield obs_batch, actions_batch, value_preds_batch, \
-                return_batch, old_action_log_probs_batch, adv_targ
+            yield obs_batch.to(device), actions_batch.to(device), value_preds_batch.to(device), \
+                return_batch.to(device), old_action_log_probs_batch.to(device), adv_targ.to(device)
